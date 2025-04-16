@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "528925798619",
+    "project_id": "visaconsaltancy-e6fdd",
+    "storage_bucket": "visaconsaltancy-e6fdd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:528925798619:android:081bac4e5375f632f05cfe",
+        "android_client_info": {
+          "package_name": "com.example.visa_consaltancy"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "528925798619-26f428g4m25vn6khq4hd48d294jkgg21.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAdRGZyYGXX4VVa55AIRNClsC5o39h5I_s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "528925798619-26f428g4m25vn6khq4hd48d294jkgg21.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "528925798619-67vpsuq88a1h7tcq8jhvraamrrvo3pbj.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.visaConsultancy"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

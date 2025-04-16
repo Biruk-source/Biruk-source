@@ -4,10 +4,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_tilt/flutter_tilt.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter_vibrate/flutter_vibrate.dart';
+
 import 'dart:ui';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:rive/rive.dart' as rive;
+
 import 'package:connectivity_plus/connectivity_plus.dart'; // For network checks
 
 /// WelcomeScreen for Global Reach Consultancy
@@ -266,7 +266,6 @@ class _WelcomeScreenState extends State<WelcomeScreen>
           _buildToggleButton(
             icon: _isHighContrast ? Icons.contrast : Icons.brightness_6,
             onTap: () {
-              Vibrate.feedback(FeedbackType.light);
               setState(() {
                 _isHighContrast = !_isHighContrast;
                 _savePreferences();
@@ -278,7 +277,6 @@ class _WelcomeScreenState extends State<WelcomeScreen>
           _buildToggleButton(
             icon: _isDarkMode ? Icons.dark_mode : Icons.light_mode,
             onTap: () {
-              Vibrate.feedback(FeedbackType.light);
               setState(() {
                 _isDarkMode = !_isDarkMode;
                 _savePreferences();
@@ -632,11 +630,10 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                     onPressed:
                         _hasInternet
                             ? () {
-                              Vibrate.feedback(FeedbackType.medium);
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text(
-                                    'Contact us at +251-XXX-XXX-XXXX',
+                                    'Contact us at +251-0928211778',
                                   ),
                                 ),
                               );
@@ -682,7 +679,6 @@ class _WelcomeScreenState extends State<WelcomeScreen>
               child: GestureDetector(
                 onTapDown: (_) => _ctaController.forward(),
                 onTapUp: (_) {
-                  Vibrate.feedback(FeedbackType.success);
                   _ctaController.reverse();
                   Navigator.pushNamed(
                     context,
@@ -767,7 +763,6 @@ class _WelcomeScreenState extends State<WelcomeScreen>
           onPressed:
               _hasInternet
                   ? () {
-                    Vibrate.feedback(FeedbackType.medium);
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Call us at 0928211778')),
                     );

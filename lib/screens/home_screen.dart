@@ -6,7 +6,7 @@ import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:flutter_tilt/flutter_tilt.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:visa_consaltancy/screens/welcome_screen.dart';
+
 import 'profile.dart';
 import 'dart:ui';
 import 'login_screen.dart';

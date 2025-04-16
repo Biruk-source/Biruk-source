@@ -1,133 +1,105 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
-import 'package:flutter_tilt/flutter_tilt.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_spinkit/flutter_spinkit.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'dart:ui';
+
+// User model to hold profile data
+class UserProfile {
+  final String uid;
+  final String username;
+  final String email;
+  final String? phone;
+  final String? profilePictureUrl;
+  final String? bio;
+  final bool notificationsEnabled;
+  final Map<String, dynamic> preferences;
+
+  UserProfile({
+    required this.uid,
+    required this.username,
+    required this.email,
+    this.phone,
+    this.profilePictureUrl,
+    this.bio,
+    this.notificationsEnabled = true,
+    this.preferences = const {},
+  });
+
+  // Factory to create from Firestore document
+  factory UserProfile.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return UserProfile(
+      uid: doc.id,
+      username: data['username'] ?? 'User',
+      email: data['email'] ?? '',
+      phone: data['phone'],
+      profilePictureUrl: data['profilePictureUrl'],
+      bio: data['bio'],
+      notificationsEnabled: data['notificationsEnabled'] ?? true,
+      preferences: data['preferences'] ?? {},
+    );
+  }
+}
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
+  _ProfileScreenState createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen>
-    with TickerProviderStateMixin {
-  final TextEditingController _usernameController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController();
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  UserProfile? _userProfile;
+  bool _isLoading = true;
+
+  // Firebase instances
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  Map<String, dynamic>? _userData;
-  bool _isLoading = false;
-  bool _isEditing = false;
-  late AnimationController _fadeController;
-  late AnimationController _buttonController;
-  late Animation<double> _fadeAnimation;
-  late Animation<double> _buttonScale;
 
   @override
   void initState() {
     super.initState();
-    // Initialize animations
-    _fadeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    );
-    _buttonController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 200),
-    );
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _fadeController, curve: Curves.easeInOut),
-    );
-    _buttonScale = Tween<double>(begin: 1.0, end: 0.95).animate(
-      CurvedAnimation(parent: _buttonController, curve: Curves.easeInOut),
-    );
-    _fetchUserData();
-    _fadeController.forward();
+    _tabController = TabController(length: 4, vsync: this);
+    _fetchUserProfile();
   }
 
   @override
   void dispose() {
-    _usernameController.dispose();
-    _phoneController.dispose();
-    _fadeController.dispose();
-    _buttonController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
-  // Fetch user data from Firestore
-  Future<void> _fetchUserData() async {
-    setState(() => _isLoading = true);
+  // Fetch user profile from Firestore
+  Future<void> _fetchUserProfile() async {
     try {
+      setState(() => _isLoading = true);
       final user = _auth.currentUser;
       if (user != null) {
         final doc = await _firestore.collection('users').doc(user.uid).get();
         if (doc.exists) {
-          setState(() {
-            _userData = doc.data();
-            _usernameController.text = _userData?['username'] ?? '';
-            _phoneController.text = _userData?['phone'] ?? '';
-            _isLoading = false;
-          });
+          _userProfile = UserProfile.fromFirestore(doc);
         } else {
-          setState(() => _isLoading = false);
+          // Fallback if no profile exists
+          _userProfile = UserProfile(
+            uid: user.uid,
+            username: user.displayName ?? 'User',
+            email: user.email ?? '',
+          );
         }
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error fetching profile: $e')));
-      setState(() => _isLoading = false);
-    }
-  }
-
-  // Update user data in Firestore
-  Future<void> _updateProfile() async {
-    if (_usernameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please enter a username')));
-      return;
-    }
-    final phone = _phoneController.text.trim();
-    if (phone.isNotEmpty) {
-      final RegExp phoneRegex = RegExp(r'^\+?\d{10,15}$');
-      if (!phoneRegex.hasMatch(phone)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter a valid phone number')),
-        );
-        return;
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error loading profile: $e')));
       }
-    }
-    _buttonController.forward().then((_) => _buttonController.reverse());
-    setState(() => _isLoading = true);
-    try {
-      final user = _auth.currentUser;
-      if (user != null) {
-        await _firestore.collection('users').doc(user.uid).set({
-          'username': _usernameController.text.trim(),
-          'phone': phone,
-          'email': user.email,
-          'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-        setState(() {
-          _isEditing = false;
-          _userData?['username'] = _usernameController.text.trim();
-          _userData?['phone'] = phone;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile updated successfully')),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error updating profile: $e')));
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -137,9 +109,9 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF001A1F), Color(0xFF004D40)],
+            colors: [Colors.black, Colors.grey[900]!],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -147,281 +119,647 @@ class _ProfileScreenState extends State<ProfileScreen>
         child: SafeArea(
           child:
               _isLoading
-                  ? const Center(
+                  ? Center(
                     child: SpinKitFoldingCube(
-                      color: Color(0xFFFFCA28),
+                      color: const Color(0xFF00ACC1),
                       size: 50,
                     ),
                   )
-                  : FadeTransition(
-                    opacity: _fadeAnimation,
-                    child: CustomScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      slivers: [
-                        // App bar
-                        SliverAppBar(
-                          backgroundColor: Colors.transparent,
-                          elevation: 0,
-                          pinned: true,
-                          leading: IconButton(
-                            icon: const Icon(
-                              Icons.arrow_back,
-                              color: Colors.white,
-                            ),
-                            onPressed: () => Navigator.pop(context),
-                          ),
+                  : CustomScrollView(
+                    slivers: [
+                      SliverAppBar(
+                        backgroundColor: Colors.teal.withOpacity(0.8),
+                        pinned: true,
+                        expandedHeight: isSmallScreen ? 200 : 250,
+                        flexibleSpace: FlexibleSpaceBar(
                           title: Text(
-                            'Your Profile',
-                            style: GoogleFonts.montserrat(
+                            'Profile',
+                            style: GoogleFonts.orbitron(
                               fontSize: isSmallScreen ? 20 : 24,
-                              fontWeight: FontWeight.bold,
                               color: Colors.white,
-                              shadows: const [
-                                Shadow(
-                                  color: Color(0xFF00ACC1),
-                                  blurRadius: 8,
-                                  offset: Offset(0, 2),
-                                ),
-                              ],
+                              fontWeight: FontWeight.bold,
                             ),
+                          ),
+                          background: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Image.network(
+                                'https://images.unsplash.com/photo-1516321310764-908d0c1a75be',
+                                fit: BoxFit.cover,
+                                color: Colors.black.withOpacity(0.5),
+                                colorBlendMode: BlendMode.darken,
+                                errorBuilder:
+                                    (context, error, stackTrace) =>
+                                        Container(color: Colors.grey[900]),
+                              ),
+                              BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                                child: Container(color: Colors.transparent),
+                              ),
+                            ],
                           ),
                         ),
-                        // Profile content
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24.0),
-                            child: Tilt(
-                              tiltConfig: const TiltConfig(angle: 10),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(20),
-                                child: BackdropFilter(
-                                  filter: ImageFilter.blur(
-                                    sigmaX: 5,
-                                    sigmaY: 5,
-                                  ),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(20),
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey[900]!.withOpacity(0.7),
-                                      borderRadius: BorderRadius.circular(20),
-                                      border: const Border(
-                                        left: BorderSide(
-                                          color: Color(0xFF00ACC1),
-                                          width: 4,
-                                        ),
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: const Color(
-                                            0xFF00ACC1,
-                                          ).withOpacity(0.3),
-                                          blurRadius: 15,
-                                          spreadRadius: 2,
-                                        ),
-                                      ],
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        // Avatar and email
-                                        Row(
-                                          children: [
-                                            CircleAvatar(
-                                              radius: isSmallScreen ? 40 : 50,
-                                              backgroundColor: const Color(
-                                                0xFF00ACC1,
-                                              ),
-                                              child: Text(
-                                                _userData?['username']
-                                                        ?.substring(0, 1)
-                                                        .toUpperCase() ??
-                                                    'U',
-                                                style: GoogleFonts.montserrat(
-                                                  fontSize:
-                                                      isSmallScreen ? 30 : 40,
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 16),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    _userData?['email'] ??
-                                                        'Loading...',
-                                                    style:
-                                                        GoogleFonts.montserrat(
-                                                          fontSize:
-                                                              isSmallScreen
-                                                                  ? 16
-                                                                  : 18,
-                                                          color: Colors.white,
-                                                        ),
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                  Text(
-                                                    'Member since ${_userData?['createdAt']?.toDate().year ?? 'N/A'}',
-                                                    style:
-                                                        GoogleFonts.montserrat(
-                                                          fontSize:
-                                                              isSmallScreen
-                                                                  ? 14
-                                                                  : 16,
-                                                          color: Colors.white70,
-                                                        ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 24),
-                                        // Username field
-                                        TextField(
-                                          controller: _usernameController,
-                                          enabled: _isEditing,
-                                          style: GoogleFonts.montserrat(
-                                            color: Colors.white,
-                                          ),
-                                          decoration: InputDecoration(
-                                            filled: true,
-                                            fillColor: Colors.grey[800],
-                                            labelText: 'Username',
-                                            labelStyle: GoogleFonts.montserrat(
-                                              color: const Color(0xFF00ACC1),
-                                            ),
-                                            prefixIcon: const Icon(
-                                              Icons.person,
-                                              color: Color(0xFF00ACC1),
-                                            ),
-                                            border: OutlineInputBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                              borderSide: BorderSide.none,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 16),
-                                        // Phone field
-                                        TextField(
-                                          controller: _phoneController,
-                                          enabled: _isEditing,
-                                          keyboardType: TextInputType.phone,
-                                          style: GoogleFonts.montserrat(
-                                            color: Colors.white,
-                                          ),
-                                          decoration: InputDecoration(
-                                            filled: true,
-                                            fillColor: Colors.grey[800],
-                                            labelText: 'Phone Number',
-                                            labelStyle: GoogleFonts.montserrat(
-                                              color: const Color(0xFF00ACC1),
-                                            ),
-                                            prefixIcon: const Icon(
-                                              Icons.phone,
-                                              color: Color(0xFF00ACC1),
-                                            ),
-                                            border: OutlineInputBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                              borderSide: BorderSide.none,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 24),
-                                        // Edit/Save button
-                                        AnimatedBuilder(
-                                          animation: _buttonScale,
-                                          builder:
-                                              (
-                                                context,
-                                                child,
-                                              ) => Transform.scale(
-                                                scale: _buttonScale.value,
-                                                child: ElevatedButton(
-                                                  onPressed:
-                                                      _isLoading
-                                                          ? null
-                                                          : () {
-                                                            _buttonController
-                                                                .forward()
-                                                                .then(
-                                                                  (_) =>
-                                                                      _buttonController
-                                                                          .reverse(),
-                                                                );
-                                                            if (_isEditing) {
-                                                              _updateProfile();
-                                                            } else {
-                                                              setState(
-                                                                () =>
-                                                                    _isEditing =
-                                                                        true,
-                                                              );
-                                                            }
-                                                          },
-                                                  style: ElevatedButton.styleFrom(
-                                                    backgroundColor:
-                                                        const Color(0xFF00ACC1),
-                                                    shape: RoundedRectangleBorder(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            12,
-                                                          ),
-                                                    ),
-                                                    padding:
-                                                        EdgeInsets.symmetric(
-                                                          vertical:
-                                                              isSmallScreen
-                                                                  ? 14
-                                                                  : 16,
-                                                          horizontal:
-                                                              isSmallScreen
-                                                                  ? 24
-                                                                  : 32,
-                                                        ),
-                                                    elevation: 5,
-                                                    shadowColor: const Color(
-                                                      0xFF00ACC1,
-                                                    ).withOpacity(0.5),
-                                                  ),
-                                                  child: Text(
-                                                    _isEditing
-                                                        ? 'Save Changes'
-                                                        : 'Edit Profile',
-                                                    style:
-                                                        GoogleFonts.montserrat(
-                                                          fontSize:
-                                                              isSmallScreen
-                                                                  ? 16
-                                                                  : 18,
-                                                          color: Colors.white,
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                        ),
-                                                  ),
-                                                ),
-                                              ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
+                        bottom: TabBar(
+                          controller: _tabController,
+                          labelColor: Colors.white,
+                          unselectedLabelColor: Colors.tealAccent,
+                          indicatorColor: Colors.tealAccent,
+                          tabs: [
+                            Tab(text: 'Overview'),
+                            Tab(text: 'Settings'),
+                            Tab(text: 'Statistics'),
+                            Tab(text: 'Activity'),
+                          ],
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: Container(
+                          height: MediaQuery.of(context).size.height,
+                          child: TabBarView(
+                            controller: _tabController,
+                            children: [
+                              ProfileOverviewTab(user: _userProfile!),
+                              ProfileSettingsTab(user: _userProfile!),
+                              ProfileStatisticsTab(user: _userProfile!),
+                              ProfileActivityTab(user: _userProfile!),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+        ),
+      ),
+    );
+  }
+}
+
+// Overview Tab: Displays user profile details
+class ProfileOverviewTab extends StatelessWidget {
+  final UserProfile user;
+
+  const ProfileOverviewTab({super.key, required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Profile Picture
+          Center(
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.teal, width: 3),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.teal.withOpacity(0.4),
+                    blurRadius: 10,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: CircleAvatar(
+                radius: isSmallScreen ? 50 : 60,
+                backgroundImage:
+                    user.profilePictureUrl != null
+                        ? NetworkImage(user.profilePictureUrl!)
+                        : null,
+                child:
+                    user.profilePictureUrl == null
+                        ? Text(
+                          user.username[0].toUpperCase(),
+                          style: GoogleFonts.montserrat(
+                            fontSize: isSmallScreen ? 30 : 40,
+                            color: Colors.white,
+                          ),
+                        )
+                        : null,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Username
+          Center(
+            child: Text(
+              user.username,
+              style: GoogleFonts.orbitron(
+                fontSize: isSmallScreen ? 22 : 26,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Email
+          Center(
+            child: Text(
+              user.email,
+              style: GoogleFonts.montserrat(
+                fontSize: isSmallScreen ? 14 : 16,
+                color: Colors.white70,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Bio
+          if (user.bio != null)
+            Text(
+              user.bio!,
+              style: GoogleFonts.montserrat(
+                fontSize: isSmallScreen ? 14 : 16,
+                color: Colors.white70,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          const SizedBox(height: 16),
+          // Phone
+          if (user.phone != null)
+            _buildInfoRow(
+              icon: Icons.phone,
+              label: 'Phone',
+              value: user.phone!,
+              isSmallScreen: isSmallScreen,
+            ),
+          const SizedBox(height: 8),
+          // Edit Profile Button
+          Center(
+            child: ElevatedButton(
+              onPressed: () {
+                // Placeholder for navigation to edit profile screen
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Edit Profile coming soon!')),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: EdgeInsets.symmetric(
+                  horizontal: isSmallScreen ? 20 : 30,
+                  vertical: isSmallScreen ? 10 : 12,
+                ),
+              ),
+              child: Text(
+                'Edit Profile',
+                style: GoogleFonts.montserrat(
+                  fontSize: isSmallScreen ? 14 : 16,
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          // Additional Info (e.g., Preferences)
+          if (user.preferences.isNotEmpty)
+            Card(
+              color: Colors.grey[900]!.withOpacity(0.7),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Preferences',
+                      style: GoogleFonts.orbitron(
+                        fontSize: isSmallScreen ? 16 : 18,
+                        color: Colors.teal,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    for (var entry in user.preferences.entries)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          '${entry.key}: ${entry.value}',
+                          style: GoogleFonts.montserrat(
+                            fontSize: isSmallScreen ? 12 : 14,
+                            color: Colors.white70,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required bool isSmallScreen,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, color: Colors.teal, size: isSmallScreen ? 20 : 24),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            '$label: $value',
+            style: GoogleFonts.montserrat(
+              fontSize: isSmallScreen ? 14 : 16,
+              color: Colors.white70,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// Settings Tab: Manage user preferences and account settings
+class ProfileSettingsTab extends StatefulWidget {
+  final UserProfile user;
+
+  const ProfileSettingsTab({super.key, required this.user});
+
+  @override
+  _ProfileSettingsTabState createState() => _ProfileSettingsTabState();
+}
+
+class _ProfileSettingsTabState extends State<ProfileSettingsTab> {
+  late bool _notificationsEnabled;
+
+  @override
+  void initState() {
+    super.initState();
+    _notificationsEnabled = widget.user.notificationsEnabled;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Notifications Toggle
+        SwitchListTile(
+          title: Text(
+            'Enable Notifications',
+            style: GoogleFonts.montserrat(
+              fontSize: isSmallScreen ? 14 : 16,
+              color: Colors.white,
+            ),
+          ),
+          subtitle: Text(
+            'Receive updates about your applications',
+            style: GoogleFonts.montserrat(
+              fontSize: isSmallScreen ? 12 : 14,
+              color: Colors.white70,
+            ),
+          ),
+          value: _notificationsEnabled,
+          onChanged: (value) async {
+            setState(() => _notificationsEnabled = value);
+            try {
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(widget.user.uid)
+                  .update({'notificationsEnabled': value});
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error updating settings: $e')),
+                );
+              }
+            }
+          },
+          activeColor: Colors.teal,
+        ),
+        // Privacy Settings
+        ListTile(
+          leading: Icon(Icons.lock, color: Colors.teal),
+          title: Text(
+            'Privacy',
+            style: GoogleFonts.montserrat(
+              fontSize: isSmallScreen ? 14 : 16,
+              color: Colors.white,
+            ),
+          ),
+          subtitle: Text(
+            'Manage data sharing and visibility',
+            style: GoogleFonts.montserrat(
+              fontSize: isSmallScreen ? 12 : 14,
+              color: Colors.white70,
+            ),
+          ),
+          trailing: Icon(Icons.arrow_forward_ios, color: Colors.teal, size: 16),
+          onTap: () {
+            // Placeholder for privacy settings navigation
+          },
+        ),
+        // Theme Selection
+        ListTile(
+          leading: Icon(Icons.color_lens, color: Colors.teal),
+          title: Text(
+            'Theme',
+            style: GoogleFonts.montserrat(
+              fontSize: isSmallScreen ? 14 : 16,
+              color: Colors.white,
+            ),
+          ),
+          subtitle: Text(
+            'Customize app appearance',
+            style: GoogleFonts.montserrat(
+              fontSize: isSmallScreen ? 12 : 14,
+              color: Colors.white70,
+            ),
+          ),
+          trailing: Icon(Icons.arrow_forward_ios, color: Colors.teal, size: 16),
+          onTap: () {
+            // Placeholder for theme selection navigation
+          },
+        ),
+        // Account Security
+        ListTile(
+          leading: Icon(Icons.security, color: Colors.teal),
+          title: Text(
+            'Security',
+            style: GoogleFonts.montserrat(
+              fontSize: isSmallScreen ? 14 : 16,
+              color: Colors.white,
+            ),
+          ),
+          subtitle: Text(
+            'Update password and authentication',
+            style: GoogleFonts.montserrat(
+              fontSize: isSmallScreen ? 12 : 14,
+              color: Colors.white70,
+            ),
+          ),
+          trailing: Icon(Icons.arrow_forward_ios, color: Colors.teal, size: 16),
+          onTap: () {
+            // Placeholder for security settings navigation
+          },
+        ),
+        const SizedBox(height: 24),
+        // Delete Account
+        Center(
+          child: TextButton(
+            onPressed: () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder:
+                    (context) => AlertDialog(
+                      backgroundColor: Colors.grey[900],
+                      title: Text(
+                        'Delete Account',
+                        style: GoogleFonts.orbitron(color: Colors.white),
+                      ),
+                      content: Text(
+                        'Are you sure? This action cannot be undone.',
+                        style: GoogleFonts.montserrat(color: Colors.white70),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: Text(
+                            'Cancel',
+                            style: GoogleFonts.montserrat(color: Colors.teal),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: Text(
+                            'Delete',
+                            style: GoogleFonts.montserrat(
+                              color: Colors.redAccent,
                             ),
                           ),
                         ),
                       ],
                     ),
+              );
+              if (confirm == true) {
+                // Placeholder for account deletion logic
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Account deletion coming soon!'),
                   ),
+                );
+              }
+            },
+            child: Text(
+              'Delete Account',
+              style: GoogleFonts.montserrat(
+                fontSize: isSmallScreen ? 14 : 16,
+                color: Colors.redAccent,
+              ),
+            ),
+          ),
         ),
+      ],
+    );
+  }
+}
+
+// Statistics Tab: Display user activity metrics
+class ProfileStatisticsTab extends StatelessWidget {
+  final UserProfile user;
+
+  const ProfileStatisticsTab({super.key, required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Application Statistics',
+            style: GoogleFonts.orbitron(
+              fontSize: isSmallScreen ? 18 : 20,
+              color: Colors.teal,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            color: Colors.grey[900]!.withOpacity(0.7),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Text(
+                    'Visa Applications',
+                    style: GoogleFonts.montserrat(
+                      fontSize: isSmallScreen ? 14 : 16,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    height: isSmallScreen ? 150 : 200,
+                    child: PieChart(
+                      PieChartData(
+                        sections: [
+                          PieChartSectionData(
+                            value: 5,
+                            color: Colors.teal,
+                            title: 'Approved',
+                            radius: isSmallScreen ? 50 : 60,
+                            titleStyle: GoogleFonts.montserrat(
+                              fontSize: isSmallScreen ? 12 : 14,
+                              color: Colors.white,
+                            ),
+                          ),
+                          PieChartSectionData(
+                            value: 3,
+                            color: Colors.yellow,
+                            title: 'Pending',
+                            radius: isSmallScreen ? 50 : 60,
+                            titleStyle: GoogleFonts.montserrat(
+                              fontSize: isSmallScreen ? 12 : 14,
+                              color: Colors.black,
+                            ),
+                          ),
+                          PieChartSectionData(
+                            value: 2,
+                            color: Colors.red,
+                            title: 'Rejected',
+                            radius: isSmallScreen ? 50 : 60,
+                            titleStyle: GoogleFonts.montserrat(
+                              fontSize: isSmallScreen ? 12 : 14,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                        sectionsSpace: 2,
+                        centerSpaceRadius: isSmallScreen ? 30 : 40,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            color: Colors.grey[900]!.withOpacity(0.7),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Text(
+                    'Activity Breakdown',
+                    style: GoogleFonts.montserrat(
+                      fontSize: isSmallScreen ? 14 : 16,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Placeholder for bar chart or other metrics
+                  Text(
+                    'Detailed metrics coming soon!',
+                    style: GoogleFonts.montserrat(
+                      fontSize: isSmallScreen ? 12 : 14,
+                      color: Colors.white70,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
+    );
+  }
+}
+
+// Activity Tab: Show recent user actions
+class ProfileActivityTab extends StatelessWidget {
+  final UserProfile user;
+
+  const ProfileActivityTab({super.key, required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
+
+    return StreamBuilder<QuerySnapshot>(
+      stream:
+          FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .collection('activity')
+              .orderBy('timestamp', descending: true)
+              .limit(20)
+              .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(color: Colors.teal),
+          );
+        }
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Error loading activity: ${snapshot.error}',
+              style: GoogleFonts.montserrat(color: Colors.white70),
+            ),
+          );
+        }
+        final activities = snapshot.data?.docs ?? [];
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: activities.length,
+          itemBuilder: (context, index) {
+            final activity = activities[index].data() as Map<String, dynamic>;
+            return Card(
+              color: Colors.grey[900]!.withOpacity(0.7),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ListTile(
+                leading: Icon(
+                  Icons.history,
+                  color: Colors.teal,
+                  size: isSmallScreen ? 20 : 24,
+                ),
+                title: Text(
+                  activity['action'] ?? 'Activity',
+                  style: GoogleFonts.montserrat(
+                    fontSize: isSmallScreen ? 14 : 16,
+                    color: Colors.white,
+                  ),
+                ),
+                subtitle: Text(
+                  activity['timestamp']?.toDate().toString() ?? 'Unknown time',
+                  style: GoogleFonts.montserrat(
+                    fontSize: isSmallScreen ? 12 : 14,
+                    color: Colors.white70,
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
